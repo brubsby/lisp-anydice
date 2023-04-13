@@ -97,7 +97,6 @@
   (check-type left hash-table)
   (check-type right hash-table)
   (let ((new-distribution (make-hash-table)))
-    (print (list 'binary-operation operator left right)) ; Debug statement
     (loop for left-key being each hash-key of left using (hash-value left-value)
       do (loop for right-key being each hash-key of right using (hash-value right-value)
         do (let ((result (cond
@@ -113,22 +112,16 @@
 	
 				  
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (dolist (operator '(< > <= >= =))
+  (dolist (operator '(< > <= >= = - + * /))
     (labels ((create-lambda (operator original-op)
                (lambda (&rest args)
                  (if (some #'hash-table-p args)
-                     (reduce (curry 'relational-distributions operator) args)
+                     (reduce (curry (if (member operator '(< > <= >= =))
+                                        'relational-distributions
+                                        'binary-operation)
+                                    operator)
+                             args)
                      (apply original-op args)))))
       (setf (symbol-function operator)
             (create-lambda operator (symbol-function operator))))))
-				  
-				  
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (dolist (operator '(- + * /))
-    (labels ((create-lambda (operator original-op)
-               (lambda (&rest args)
-                 (if (some #'hash-table-p args)
-                     (reduce (curry 'binary-operation operator) args)
-                     (apply original-op args)))))
-      (setf (symbol-function operator)
-            (create-lambda operator (symbol-function operator))))))
+
