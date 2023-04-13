@@ -1,3 +1,7 @@
+(defun curry (function &rest args)
+    (lambda (&rest more-args)
+      (apply function (append args more-args))))
+
 (defun const-distribution (constant)
   (check-type constant number)
   (sequence-to-distribution (list (floor constant))))
@@ -31,7 +35,7 @@
                                   :expected-type
                                   (list 'integer 'list 'hash-table)))))
   (cond ((integerp left)
-         (reduce 'add-distributions (loop repeat left collect right-distribution)))
+         (reduce '+ (loop repeat left collect right-distribution)))
         (t (error (make-condition 'type-error :datum left
                                   :expected-type
                                   (list 'integer))))))
@@ -92,75 +96,39 @@
   (if (numberp right) (setf right (const-distribution right)))
   (check-type left hash-table)
   (check-type right hash-table)
-  (let ((new-distribution (make-hash-table))) ; Define new-distribution here
+  (let ((new-distribution (make-hash-table)))
+    (print (list 'binary-operation operator left right)) ; Debug statement
     (loop for left-key being each hash-key of left using (hash-value left-value)
       do (loop for right-key being each hash-key of right using (hash-value right-value)
         do (let ((result (cond
                            ((eq operator '+) (+ left-key right-key))
                            ((eq operator '-) (- left-key right-key))
                            ((eq operator '*) (* left-key right-key))
-                           ((eq operator '/) (floor left-key right-key)))))
+                           ((eq operator '/) (floor left-key right-key))
+						   (t (error "Invalid argument: ~a" operator)))))
              (setf (gethash result new-distribution)
                    (+ (* left-value right-value)
                       (gethash result new-distribution 0))))))
-    new-distribution)) ; Return new-distribution
-
-
-(defun add-distributions (left right)
-  (binary-operation '+ left right))
-
-(defun subtract-distributions (left right)
-  (binary-operation '- left right))
-
-(defun multiply-distributions (left right)
-  (binary-operation '* left right))
-
-(defun divide-distributions (left right)
-  (binary-operation '/ left right))
-
-
+    new-distribution))
+	
+				  
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (dolist (operator '(< > <= >= =))
-    (setf (symbol-function operator)
-          (let ((original-op (symbol-function operator)))
-            (lambda (x y)
-              (cond ((not (some #'hash-table-p (list x y)))
-                     (funcall original-op x y))
-                    (t
-                     (let ((x-distribution (if (hash-table-p x) x (const-distribution x)))
-                           (y-distribution (if (hash-table-p y) y (const-distribution y))))
-                       (relational-distributions original-op x-distribution y-distribution)))))))))
-
-
-
+    (labels ((create-lambda (operator original-op)
+               (lambda (&rest args)
+                 (if (some #'hash-table-p args)
+                     (reduce (curry 'relational-distributions operator) args)
+                     (apply original-op args)))))
+      (setf (symbol-function operator)
+            (create-lambda operator (symbol-function operator))))))
+				  
+				  
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf (symbol-function '-)
-        (let ((original-minus (symbol-function '-)))
-          (lambda (x &rest more-numbers)
-            (cond ((some #'hash-table-p (cons x more-numbers))
-			  (reduce #'subtract-distributions (cons x more-numbers)))
-                (t (apply original-minus x more-numbers)))))))
-  
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf (symbol-function '*)
-        (let ((original-times (symbol-function '*)))
-          (lambda (x &rest more-numbers)
-            (cond ((some #'hash-table-p (cons x more-numbers))
-			  (reduce #'multiply-distributions (cons x more-numbers)))
-                (t (apply original-times x more-numbers)))))))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf (symbol-function '/)
-        (let ((original-division (symbol-function '/)))
-          (lambda (x &rest more-numbers)
-            (cond ((some #'hash-table-p (cons x more-numbers))
-			  (reduce #'divide-distributions (cons x more-numbers)))
-                (t (apply original-division x more-numbers)))))))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf (symbol-function '+)
-        (let ((original-plus (symbol-function '+)))
-          (lambda (x &rest more-numbers)
-            (cond ((some #'hash-table-p (cons x more-numbers))
-			  (reduce #'add-distributions (cons x more-numbers)))
-                (t (apply original-plus x more-numbers)))))))
+  (dolist (operator '(- + * /))
+    (labels ((create-lambda (operator original-op)
+               (lambda (&rest args)
+                 (if (some #'hash-table-p args)
+                     (reduce (curry 'binary-operation operator) args)
+                     (apply original-op args)))))
+      (setf (symbol-function operator)
+            (create-lambda operator (symbol-function operator))))))
