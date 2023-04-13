@@ -124,9 +124,13 @@
     (setf (symbol-function operator)
           (let ((original-op (symbol-function operator)))
             (lambda (x y)
-              (cond ((and (hash-table-p x) (hash-table-p y))
-                     (relational-distributions original-op x y))
-                    (t (funcall original-op x y))))))))
+              (cond ((not (some #'hash-table-p (list x y)))
+                     (funcall original-op x y))
+                    (t
+                     (let ((x-distribution (if (hash-table-p x) x (const-distribution x)))
+                           (y-distribution (if (hash-table-p y) y (const-distribution y))))
+                       (relational-distributions original-op x-distribution y-distribution)))))))))
+
 
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
