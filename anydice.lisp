@@ -1,3 +1,7 @@
+(defun const-distribution (constant)
+  (check-type constant number)
+  (sequence-to-distribution (list (floor constant))))
+
 (defun sides-to-sequence (sides)
   (check-type sides integer)
   (loop for n from 1 below (1+ sides) by 1 collect n))
@@ -41,10 +45,8 @@
     (sort keys (lambda (k1 k2) (< k1 k2)))))
 
 (defun output (distribution)
-  (cond ((typep distribution 'ratio)
-         (setf distribution (d (floor distribution) 1)))
-        ((typep distribution 'integer)
-         (setf distribution (d distribution 1))))
+  (cond ((numberp distribution)
+         (setf distribution (const-distribution distribution))))
   (check-type distribution hash-table)
   (format t "   #  %~%")
   (let* ((bar-chars (list #.(code-char 32) #.(code-char 9615)
@@ -64,21 +66,13 @@
                     (cond ((< i char-column) (car (last bar-chars)))
                           ((> i char-column) (first bar-chars))
                           (t (nth (truncate (* 8 char-decimal)) bar-chars))))))))))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf (symbol-function '+)
-        (let ((original-plus (symbol-function '+)))
-          (lambda (x &rest more-numbers)
-            (cond ((some #'hash-table-p (cons x more-numbers))
-			  (reduce #'add-distributions (cons x more-numbers)))
-                (t (apply original-plus x more-numbers)))))))
   
   
 (defun relational-distributions (predicate left right)
-  (if (integerp left)
-      (setf left (d left 1)))
-  (if (integerp right)
-      (setf right (d right 1)))
+  (if (numberp left)
+      (setf left (const-distribution left)))
+  (if (numberp right)
+      (setf right (const-distribution right)))
   (check-type left hash-table)
   (check-type right hash-table)
   (setf result-distribution (make-hash-table))
@@ -94,6 +88,8 @@
   result-distribution)
   
 (defun binary-operation (operator left right)
+  (if (numberp left) (setf left (const-distribution left)))
+  (if (numberp right) (setf right (const-distribution right)))
   (check-type left hash-table)
   (check-type right hash-table)
   (let ((new-distribution (make-hash-table))) ; Define new-distribution here
@@ -133,7 +129,6 @@
                     (t (funcall original-op x y))))))))
 
 
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (setf (symbol-function '-)
         (let ((original-minus (symbol-function '-)))
@@ -150,7 +145,6 @@
 			  (reduce #'multiply-distributions (cons x more-numbers)))
                 (t (apply original-times x more-numbers)))))))
 
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (setf (symbol-function '/)
         (let ((original-division (symbol-function '/)))
@@ -159,3 +153,10 @@
 			  (reduce #'divide-distributions (cons x more-numbers)))
                 (t (apply original-division x more-numbers)))))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf (symbol-function '+)
+        (let ((original-plus (symbol-function '+)))
+          (lambda (x &rest more-numbers)
+            (cond ((some #'hash-table-p (cons x more-numbers))
+			  (reduce #'add-distributions (cons x more-numbers)))
+                (t (apply original-plus x more-numbers)))))))
