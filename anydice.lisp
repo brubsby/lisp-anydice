@@ -28,12 +28,17 @@
   (cond ((integerp right)
          (setf right-distribution
                (sequence-to-distribution (sides-to-sequence right))))
+        ((hash-table-p right)
+         (setf right-distribution right))
         ((listp right)
-         (setf right-distribution (sequence-to-distribution right)))
-        ((typep right 'hash-table) (setf right-distribution right))
+         (cond ((every #'integerp right)
+                (setf right-distribution (sequence-to-distribution right)))
+               (t (error (make-condition 'type-error :datum right
+                                         :expected-type
+                                         (list 'integer 'hash-table 'list))))))
         (t (error (make-condition 'type-error :datum right
                                   :expected-type
-                                  (list 'integer 'list 'hash-table)))))
+                                  (list 'integer 'hash-table 'list)))))
   (cond ((integerp left)
          (reduce '+ (loop repeat left collect right-distribution)))
         (t (error (make-condition 'type-error :datum left
@@ -104,15 +109,15 @@
                            ((eq operator '-) (- left-key right-key))
                            ((eq operator '*) (* left-key right-key))
                            ((eq operator '/) (floor left-key right-key))
-						   (t (error "Invalid argument: ~a" operator)))))
+                           ((eq operator 'expt) (expt left-key right-key))
+                           (t (error "Invalid argument: ~a" operator)))))
              (setf (gethash result new-distribution)
                    (+ (* left-value right-value)
                       (gethash result new-distribution 0))))))
     new-distribution))
 	
-				  
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (dolist (operator '(< > <= >= = - + * /))
+  (dolist (operator '(< > <= >= = - + * / expt))
     (labels ((create-lambda (operator original-op)
                (lambda (&rest args)
                  (if (some #'hash-table-p args)
@@ -125,3 +130,17 @@
       (setf (symbol-function operator)
             (create-lambda operator (symbol-function operator))))))
 
+(defmacro ^ (base exponent)
+  `(expt ,base ,exponent))
+
+(defmacro {} (&rest faces)
+  (let ((result '()))
+    (loop for face in faces
+          do (cond
+               ((numberp face) (push face result))
+               ((consp face)
+                (let ((start (car face))
+                      (end (cdr face)))
+                  (loop for i from start to end do (push i result))))
+               (t (error "Invalid argument: ~a" face))))
+    `(sequence-to-distribution (list ,@(reverse result)))))
