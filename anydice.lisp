@@ -1,6 +1,14 @@
 (defun curry (function &rest args)
     (lambda (&rest more-args)
       (apply function (append args more-args))))
+	  
+(defun copy-hash-table (table)
+  (let ((new-table (make-hash-table :test (hash-table-test table))))
+    (maphash (lambda (key value)
+               (setf (gethash key new-table) value))
+             table)
+    new-table))
+
 
 (defun const-distribution (constant)
   (check-type constant number)
@@ -77,7 +85,7 @@
                           (t (nth (truncate (* 8 char-decimal)) bar-chars))))))))))
   
   
-(defun relational-distributions (predicate left right)
+(defun relational-operation (predicate left right)
   (if (numberp left)
       (setf left (const-distribution left)))
   (if (numberp right)
@@ -116,13 +124,14 @@
                       (gethash result new-distribution 0))))))
     new-distribution))
 	
+; overload operators
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (dolist (operator '(< > <= >= = - + * / expt))
     (labels ((create-lambda (operator original-op)
                (lambda (&rest args)
                  (if (some #'hash-table-p args)
                      (reduce (curry (if (member operator '(< > <= >= =))
-                                        'relational-distributions
+                                        'relational-operation
                                         'binary-operation)
                                     operator)
                              args)
@@ -133,6 +142,7 @@
 (defmacro ^ (base exponent)
   `(expt ,base ,exponent))
 
+; custom sequence macro, ({} 1 2 2 (4 . 6)) returns the same as anydice {1,2,2,4..6}
 (defmacro {} (&rest faces)
   (let ((result '()))
     (loop for face in faces
@@ -144,3 +154,31 @@
                   (loop for i from start to end do (push i result))))
                (t (error "Invalid argument: ~a" face))))
     `(sequence-to-distribution (list ,@(reverse result)))))
+	
+
+
+(defun reroll (distribution predicate &optional (reroll-limit 1))
+  (check-type distribution hash-table)
+  (check-type predicate function)
+  (check-type reroll-limit integer)
+  (let ((new-distribution (copy-hash-table distribution))
+        (reroll-count 0))
+    (loop while (< reroll-count reroll-limit)
+          do (let ((rerolled-distribution (make-hash-table)))
+               (loop for key being each hash-key of new-distribution
+                     using (hash-value value)
+                     do (if (funcall predicate key)
+                            (maphash (lambda (k v)
+                                       (setf (gethash k rerolled-distribution)
+                                             (+ (gethash k rerolled-distribution 0)
+                                                (* value v))))
+                                     distribution)
+                            (setf (gethash key rerolled-distribution)
+                                  (+ (gethash key rerolled-distribution 0)
+                                     value))))
+               (setf new-distribution rerolled-distribution)
+               (incf reroll-count)))
+    new-distribution))
+
+
+
