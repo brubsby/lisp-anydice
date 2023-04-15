@@ -60,33 +60,37 @@
   (let ((keys ()))
     (maphash (lambda (k v) (push k keys)) hash-table)
     (sort keys (lambda (k1 k2) (< k1 k2)))))
+	
+(defmacro named (expression name)
+  `(list ,name ,expression))
 
-(defun output (distribution)
-  (cond ((numberp distribution)
-         (setf distribution (const-distribution distribution))))
-  (check-type distribution hash-table)
-  (format t "   #      %")
-  (multiple-value-bind (mean stddev) (mean-and-stddev distribution)
-    (format t " (~,2f / ~,2f)~%" mean stddev))
-  (let* ((bar-chars (list #.(code-char 32) #.(code-char 9615)
-                          #.(code-char 9614) #.(code-char 9613)
-                          #.(code-char 9612) #.(code-char 9611)
-                          #.(code-char 9610) #.(code-char 9609)
-                          #.(code-char 9608)))
-    (bar-width 100)
-    (bar-width-eighths (* bar-width 8)))
-    (loop for key in (sorted-hash-table-keys distribution)
-      do (let ((value (gethash key distribution)))
-           (format t "~4d ~6,2f ~{~c~}~%" key (* 100 value)
-                 (multiple-value-bind
-                  (char-column char-decimal) (truncate (* value bar-width))
-                   (loop for i from 0 below bar-width
-                    collect
-                    (cond ((< i char-column) (car (last bar-chars)))
-                          ((> i char-column) (first bar-chars))
-                          (t (nth (truncate (* 8 char-decimal)) bar-chars))))))))))
-
-
+(defun output (&rest named-distributions)
+  (dolist (named-distribution named-distributions)
+    (destructuring-bind (name distribution) named-distribution
+      (format t "~%~%~%=========== ~a ===========~%~%" name)
+      (cond ((numberp distribution)
+             (setf distribution (const-distribution distribution))))
+      (check-type distribution hash-table)
+      (format t "   #      %")
+      (multiple-value-bind (mean stddev) (mean-and-stddev distribution)
+        (format t " (~,2f / ~,2f)~%" mean stddev))
+      (let* ((bar-chars (list #.(code-char 32) #.(code-char 9615)
+                              #.(code-char 9614) #.(code-char 9613)
+                              #.(code-char 9612) #.(code-char 9611)
+                              #.(code-char 9610) #.(code-char 9609)
+                              #.(code-char 9608)))
+             (bar-width 100)
+             (bar-width-eighths (* bar-width 8)))
+        (loop for key in (sorted-hash-table-keys distribution)
+              do (let ((value (gethash key distribution)))
+                   (format t "~4d ~6,2f ~{~c~}~%" key (* 100 value)
+                         (multiple-value-bind
+                             (char-column char-decimal) (truncate (* value bar-width))
+                             (loop for i from 0 below bar-width
+                                  collect
+                                  (cond ((< i char-column) (car (last bar-chars)))
+                                        ((> i char-column) (first bar-chars))
+                                        (t (nth (truncate (* 8 char-decimal)) bar-chars))))))))))))
 
 
   
