@@ -65,32 +65,38 @@
   `(list ,name ,expression))
 
 (defun output (&rest named-distributions)
-  (dolist (named-distribution named-distributions)
-    (destructuring-bind (name distribution) named-distribution
-      (format t "~%~%~%=========== ~a ===========~%~%" name)
-      (cond ((numberp distribution)
-             (setf distribution (const-distribution distribution))))
-      (check-type distribution hash-table)
-      (format t "   #      %")
-      (multiple-value-bind (mean stddev) (mean-and-stddev distribution)
-        (format t " (~,2f / ~,2f)~%" mean stddev))
-      (let* ((bar-chars (list #.(code-char 32) #.(code-char 9615)
-                              #.(code-char 9614) #.(code-char 9613)
-                              #.(code-char 9612) #.(code-char 9611)
-                              #.(code-char 9610) #.(code-char 9609)
-                              #.(code-char 9608)))
-             (bar-width 100)
-             (bar-width-eighths (* bar-width 8)))
-        (loop for key in (sorted-hash-table-keys distribution)
-              do (let ((value (gethash key distribution)))
-                   (format t "~4d ~6,2f ~{~c~}~%" key (* 100 value)
-                         (multiple-value-bind
-                             (char-column char-decimal) (truncate (* value bar-width))
+  (let ((output-index 1))
+    (dolist (named-distribution named-distributions)
+      (unless (listp named-distribution)
+        (setf named-distribution (list (format nil "output ~d" output-index) named-distribution)))
+      (destructuring-bind (name distribution) named-distribution
+        (format t "~%~%~%=========== ~a ===========~%~%" name)
+        (cond ((numberp distribution)
+               (setf distribution (const-distribution distribution))))
+        (check-type distribution hash-table)
+        (format t "   #      %")
+        (multiple-value-bind (mean stddev) (mean-and-stddev distribution)
+          (format t " (~,2f / ~,2f)~%" mean stddev))
+        (let* ((bar-chars (list #.(code-char 32) #.(code-char 9615)
+                                #.(code-char 9614) #.(code-char 9613)
+                                #.(code-char 9612) #.(code-char 9611)
+                                #.(code-char 9610) #.(code-char 9609)
+                                #.(code-char 9608)))
+               (bar-width 100)
+               (bar-width-eighths (* bar-width 8)))
+          (loop for key in (sorted-hash-table-keys distribution)
+                do (let ((value (gethash key distribution)))
+                     (format t "~4d ~6,2f ~{~c~}~%" key (* 100 value)
+                           (multiple-value-bind
+                               (char-column char-decimal) (truncate (* value bar-width))
                              (loop for i from 0 below bar-width
                                   collect
                                   (cond ((< i char-column) (car (last bar-chars)))
                                         ((> i char-column) (first bar-chars))
-                                        (t (nth (truncate (* 8 char-decimal)) bar-chars))))))))))))
+                                        (t (nth (truncate (* 8 char-decimal)) bar-chars)))))))))
+        (incf output-index)))))
+
+
 
 
   
@@ -205,4 +211,52 @@
       (values mean (sqrt (/ variance count))))))
 
 
+; conditional probability
+(defun given (distribution predicate)
+  (check-type distribution hash-table)
+  (check-type predicate function)
+  (let ((new-distribution (make-hash-table))
+        (total-probability 0))
+    ;; Calculate the total probability of outcomes that satisfy the predicate
+    (maphash (lambda (key value)
+               (when (funcall predicate key)
+                 (incf total-probability value)))
+             distribution)
+    ;; Create a new distribution with the probabilities of the filtered outcomes
+    (maphash (lambda (key value)
+               (when (funcall predicate key)
+                 (setf (gethash key new-distribution)
+                       (/ value total-probability))))
+             distribution)
+    new-distribution))
 
+(defun pool (operation distribution n)
+  (check-type operation (member :highest :lowest))
+  (check-type distribution hash-table)
+  (check-type n integer)
+
+  (let ((new-distribution (copy-hash-table distribution)))
+    (labels ((combine (dist1 dist2 op)
+               (let ((combined-distribution (make-hash-table)))
+                 (loop for key1 being each hash-key of dist1
+                       using (hash-value value1)
+                       do (loop for key2 being each hash-key of dist2
+                                using (hash-value value2)
+                                do (let ((result-key (funcall op key1 key2)))
+                                     (setf (gethash result-key combined-distribution)
+                                           (+ (* value1 value2)
+                                              (gethash result-key combined-distribution 0))))))
+                 combined-distribution)))
+      (loop repeat (- n 1)
+            do (setf new-distribution (combine new-distribution distribution
+                                               (case operation
+                                                 (:highest #'max)
+                                                 (:lowest #'min))))))
+    new-distribution))
+
+
+(defmacro highest (n distribution)
+  `(pool :highest ,distribution ,n))
+
+(defmacro lowest (n distribution)
+  `(pool :lowest ,distribution ,n))
