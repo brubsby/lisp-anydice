@@ -230,33 +230,35 @@
              distribution)
     new-distribution))
 
-(defun pool (operation distribution n)
-  (check-type operation (member :highest :lowest))
-  (check-type distribution hash-table)
-  (check-type n integer)
-
-  (let ((new-distribution (copy-hash-table distribution)))
-    (labels ((combine (dist1 dist2 op)
-               (let ((combined-distribution (make-hash-table)))
-                 (loop for key1 being each hash-key of dist1
-                       using (hash-value value1)
-                       do (loop for key2 being each hash-key of dist2
-                                using (hash-value value2)
-                                do (let ((result-key (funcall op key1 key2)))
-                                     (setf (gethash result-key combined-distribution)
-                                           (+ (* value1 value2)
-                                              (gethash result-key combined-distribution 0))))))
-                 combined-distribution)))
-      (loop repeat (- n 1)
-            do (setf new-distribution (combine new-distribution distribution
-                                               (case operation
-                                                 (:highest #'max)
-                                                 (:lowest #'min))))))
-    new-distribution))
 
 
-(defmacro highest (n distribution)
-  `(pool :highest ,distribution ,n))
+(defun pool (selection-fn count pool-size dice-distribution)
+  (check-type selection-fn (or symbol function))
+  (check-type count integer)
+  (check-type pool-size integer)
+  (check-type dice-distribution hash-table)
 
-(defmacro lowest (n distribution)
-  `(pool :lowest ,distribution ,n))
+  (labels ((generate-permutations (n elements)
+             (if (<= n 0)
+                 (list nil)
+                 (loop for elem in elements
+                       nconc (loop for tail in (generate-permutations (1- n) elements)
+                                   collect (cons elem tail))))))
+    
+    (let* ((permutations (generate-permutations pool-size (distribution-to-sequence dice-distribution)))
+           (result-distribution (make-hash-table)))
+      (dolist (permutation permutations)
+        (let* ((sorted-permutation (sort (copy-list permutation) (if (eq selection-fn 'highest) #'> #'<)))
+               (selected-values (subseq sorted-permutation 0 count))
+               (sum-selected-values (reduce #'+ selected-values)))
+          (setf (gethash sum-selected-values result-distribution)
+                (+ (reduce #'* (mapcar (lambda (x) (gethash x dice-distribution)) permutation))
+                   (gethash sum-selected-values result-distribution 0)))))
+      result-distribution)))
+
+; Define the highest and lowest functions to use as selection-fn
+(defun highest (a b)
+  (> a b))
+
+(defun lowest (a b)
+  (< a b))
