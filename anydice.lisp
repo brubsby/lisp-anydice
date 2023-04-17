@@ -230,13 +230,19 @@
              distribution)
     new-distribution))
 
+(defun middle (values count)
+  (let ((sorted-values (sort (copy-list values) #'<))
+        (middle-start (ceiling (- (length values) count) 2)))
+    (subseq sorted-values middle-start (+ middle-start count))))
 
 
-(defun pool (selection-fn count pool-size dice-distribution)
-  (check-type selection-fn (or symbol function))
-  (check-type count integer)
-  (check-type pool-size integer)
-  (check-type dice-distribution hash-table)
+(defun pool (selection-type count pool-size distribution)
+  (let ((selection-fn (cond
+                       ((eq selection-type 'highest) (lambda (values count) (sort-n-highest values count)))
+                       ((eq selection-type 'lowest) (lambda (values count) (sort-n-lowest values count)))
+                       ((eq selection-type 'middle) (lambda (values count) (middle values count)))
+                       (t (error "Invalid selection-type: ~a" selection-type))))
+        (result-distribution (make-hash-table)))
 
   (labels ((generate-permutations (n elements)
              (if (<= n 0)
@@ -245,20 +251,13 @@
                        nconc (loop for tail in (generate-permutations (1- n) elements)
                                    collect (cons elem tail))))))
     
-    (let* ((permutations (generate-permutations pool-size (distribution-to-sequence dice-distribution)))
+    (let* ((permutations (generate-permutations pool-size (distribution-to-sequence distribution)))
            (result-distribution (make-hash-table)))
       (dolist (permutation permutations)
-        (let* ((sorted-permutation (sort (copy-list permutation) (if (eq selection-fn 'highest) #'> #'<)))
-               (selected-values (subseq sorted-permutation 0 count))
-               (sum-selected-values (reduce #'+ selected-values)))
+        (let* ((sorted-permutation (funcall selection-fn permutation count))
+               (sum-selected-values (reduce #'+ sorted-permutation)))
           (setf (gethash sum-selected-values result-distribution)
-                (+ (reduce #'* (mapcar (lambda (x) (gethash x dice-distribution)) permutation))
+                (+ (reduce #'* (mapcar (lambda (x) (gethash x distribution)) permutation))
                    (gethash sum-selected-values result-distribution 0)))))
-      result-distribution)))
+      result-distribution))))
 
-; Define the highest and lowest functions to use as selection-fn
-(defun highest (a b)
-  (> a b))
-
-(defun lowest (a b)
-  (< a b))
