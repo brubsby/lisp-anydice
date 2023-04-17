@@ -234,6 +234,14 @@
   (let ((sorted-values (sort (copy-list values) #'<))
         (middle-start (ceiling (- (length values) count) 2)))
     (subseq sorted-values middle-start (+ middle-start count))))
+	
+(defun sort-n-highest (values count)
+  (let ((sorted-values (sort (copy-list values) #'>)))
+    (subseq sorted-values 0 count)))
+
+(defun sort-n-lowest (values count)
+  (let ((sorted-values (sort (copy-list values) #'<)))
+    (subseq sorted-values 0 count)))
 
 
 (defun pool (selection-type count pool-size distribution)
@@ -260,4 +268,5 @@
                 (+ (reduce #'* (mapcar (lambda (x) (gethash x distribution)) permutation))
                    (gethash sum-selected-values result-distribution 0)))))
       result-distribution))))
-
+	  
+	  
